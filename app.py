@@ -1,33 +1,26 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
+from sqlalchemy import create_engine
 
-# Set up page config
-st.set_page_config(page_title="Opta Event Explorer", layout="wide")
+# 1. Connect using the Secret
+@st.cache_resource # This keeps the connection alive
+def get_engine():
+    url = st.secrets["DB_URL"]
+    return create_engine(url)
 
-# Connect to your uploaded database
-def get_connection():
-    return sqlite3.connect('opta_events.db')
+engine = get_engine()
 
-st.title("⚽ Opta Event Dashboard")
+# 2. Query function
+@st.cache_data(ttl=600) # This saves data for 10 mins so it's lightning fast
+def load_soccer_data(event_type):
+    query = f"SELECT * FROM opta_events WHERE event_type = '{event_type}' LIMIT 5000"
+    return pd.read_sql(query, engine)
 
-# 1. Sidebar Filters
-st.sidebar.header("Filters")
-event_types = ["Pass", "Shot", "Tackle", "Foul"] # Adjust based on your actual data
-selected_type = st.sidebar.selectbox("Select Event Type", event_types)
+# --- UI Layout ---
+st.title("🏆 Pro Opta Analytics")
 
-# 2. Query Data based on filter
-conn = get_connection()
-query = f"SELECT * FROM event_table WHERE event_type = '{selected_type}' LIMIT 1000"
-df = pd.read_sql(query, conn)
+event = st.selectbox("Select Event", ["Pass", "Shot", "Tackle"])
+df = load_soccer_data(event)
 
-# 3. Display Metrics
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Events Loaded", len(df))
-with col2:
-    st.metric("Total in DB", "587,767")
-
-# 4. Show Data Table
-st.subheader(f"Recent {selected_type} Events")
-st.dataframe(df)
+st.metric("Events Loaded", len(df))
+st.dataframe(df.head(100)) # Show a preview
